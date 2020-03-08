@@ -1,0 +1,51 @@
+---
+title: 'Introduction: Customer Analytics usinf R'
+author: "Illarion  Jabine"
+date: "10/02/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	echo = TRUE,
+	message = FALSE,
+	warning = FALSE
+)
+```
+
+### 1. Useful Links
+ $ Wharton Customer Analytics Initiative: <https://wcai.wharton.upenn.edu/>
+ 
+## 2. Introduction
+
+According to wikipedia:
+Customer analytics is a process by which data from customer behavior is used to help make key business decisions via market segmentation and predictive analytics. 
+This information is used by businesses for direct marketing, site selection, and customer relationship management.
+Customer Analytics can provide answers to some fundamental business questions, like:
+ 1. How can we group/segment our customers?
+ 2. What are the most profitable customer segments?
+ 3. What customers are likely to upgrade?
+ 4. How can we improve our marketing campaigns?
+ 5. What customers are most likely to leave?
+ 6. What products will customers want to buy next?
+ 7. How to upsell/crossell, and how to bundle our products?
+ 8. What are customers talking about our products or services?
+the list goes on....
+
+Conceptually the customer analytics process can be divided into several major blocks and related analytical method.
+Although such a division can be done differently, by no means is it the exhaustive list of activities in the customer analytics:
+ 1. Customer Segmentation
+ 2. Prospect Analysis and Selection
+ 3. Product Segmentation
+ 4. Upsell and Cross Sell
+ 5. Product Recommendation: association analysis
+ 6. Customer retention: increase loyalty 
+ 7. Churn Analysis
+ 8. RFM Analysis
+ 9. Cohort Analysis
+ 10. Customer Opinion Analysis: NLP, topic modelling, sentiment analysis, etc.
+ 11. Promotional Campaign Analysis
+We can also add to the list above 4Ps of marketing: Price, Place, Product and Promotion and think what analytics methods can be applied to them.
+For example, what place to choose for a new shop?
+
+Each block from the customer analytics pipeline and its enabling R technology and methods will be discussed in separate text files that you can find in "Business-Management-Using-R" section of my site.
