@@ -1,0 +1,126 @@
+---
+title: 'Customer Analytics in R: Recency, Frequency, Monetary (RFM)'
+author: "Illarion  Jabine"
+date: "20/02/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	echo = TRUE,
+	message = FALSE,
+	warning = FALSE
+)
+```
+
+
+### 1. Required packages:
+
+* [rfm]: Recency, Frequency and Monetary Value Analysis
+
+### 2. Key terms
+ * RFM analysis
+ * 
+ * 
+
+### 3. Useful Links
+ $ <https://cran.r-project.org/web/packages/rfm/vignettes/rfm-customer-level-data.html>
+ 
+## 4. Introduction to RFM Analysis
+Recency, Frequency, and Monetary Value are popular metrics used to quantify customer transaction history.
+Recency is how recently the customer has purchases and measured as the number of days or weeks since the last purchase.
+Frequency is how often the customer purchases and is usually defined as the total number of
+previous purchases.
+Monetary value is the total lifetime spending in dollar value of the purchases . 
+RFM analysis classifies customers into groups according to their RFM measures or scores.
+These classifications can be used to predict the customer behavior including the likelihood of responding to an offer, etc.
+The ida behind RMF is quite simple. The customers wo have ordered recently (or ordered a lot) are more likely to make new orders in the future.
+The aim of RFM is not to attract new customers, but better target existing ones, because only existing customers have recency, frequency, and monetary values.
+The RFM algorithm is quite simple.
+These three dimensions R,F,M are divided into 5 quintiles to form an RFM cube with 125 cells.
+Obviously every time an RFM score is calculated any particular customer will move from one cell into another depending on how long he made his last purchase or responded.
+RFM can serve as a good model to track over time the customer behaviour and to understand how
+the customer relationship is evolving.
+
+
+### 5. Load the libraries
+Let's first load the libraries.
+```{r loading packages, message=FALSE, warning=FALSE}
+library(rfm)
+library(tidyverse)
+library(lubridate)
+```
+
+### 6. Loading and checking the data
+
+To calculate RFM score we need to load transactional data.
+I have load a file with 3 years of detailed historical sales transactions.
+The transaction file has the 3 columns: client,date,amount
+Each row represents one order.
+ 
+```{r load the data and pre-process them}
+# Loading data from Rds file
+#transactions <- read_csv("~/customer_transactions_for_rfm.csv")
+
+# Checking if there are any NAs:
+anyNA(transactions)
+dim(transactions)
+
+# converting date column to date format
+transactions$date <- ymd_hms(transactions$date)
+```
+
+### 7. Preparing data for RFM analysis
+
+For rfm package to calculate RFM score and work correctly, the input transactional data file has to be in the following format:
+ 1. a unique customer id
+ 2. R: number of days since the last visit
+ 3. F: number of transactions/orders
+ 4. M: total revenue from the customer
+
+We will have to do some data manipulation.
+
+```{r preparing data for RFM analysis}
+# Let's assign report date to now.
+report_date <- now()
+
+# We can construct input FRM table using aggregate() and merge() functions from base R 
+# (a long way, just for demonstaration here)
+# Creating Recency table:
+R_table <- aggregate(date ~ client, transactions, FUN = max)
+R_table$R <- as.numeric(report_date - R_table$date)
+R_table$R <- floor(R_table$R)
+
+# Creating Frequency table by counting number of occurances using length() function
+F_table <- aggregate(date ~ client, transactions, FUN = length)
+
+# Creating Monetary table by using sum() function
+M_table <- aggregate(amount ~ client, transactions, FUN = sum)
+
+# Now we can join all these 3 tables by using merge():
+RFM_table <- merge(R_table,F_table,by.x="client", by.y="client")
+RFM_table <- merge(RFM_table,M_table, by.x="client", by.y="client")
+
+# The easier way is to use dplyr, the end result is the same:
+RFM_table_dplyr <- transactions %>% group_by(client) %>% 
+        summarize(Recency = floor(as.numeric(report_date - max(date))),
+                  Frequency = n(),
+                  Monetary = sum(amount))
+```
+
+
+### 8. Calculating RFM score
+
+```{r}
+RFM_score_table <- rfm_table_customer(RFM_table_dplyr,client,Frequency,Recency,Monetary,report_date)
+
+RFM_table_dplyr$Rsegment <- findInterval(RFM_table_dplyr$Recency, quantile(RFM_table_dplyr$Recency, c(0.0, 0.25, 0.50, 0.75, 1.0)))
+
+RFM_table_dplyr$Fsegment <- findInterval(RFM_table_dplyr$Frequency,quantile(RFM_table_dplyr$Frequency, c(0.0, 0.25, 0.50, 0.75, 1.0)))
+
+RFM_table_dplyr$Msegment <- findInterval(RFM_table_dplyr$Monetary,quantile(RFM_table_dplyr$Monetary, c(0.0, 0.25, 0.50, 0.75, 1.0)))
+
+```
+
+
+### 9. Topic 3
