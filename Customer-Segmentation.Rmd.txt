@@ -1,0 +1,512 @@
+---
+title: 'Customer Analytics: Customer Segmentation'
+author: "Illarion  Jabine"
+date: "28/02/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	echo = TRUE,
+	message = FALSE,
+	warning = FALSE
+)
+```
+
+
+## 1. Required packages:
+
+* [NbClust]: Determining the Best Number of Clusters in a Data Set
+* [factoextra]: Extract and visualize the results of multivariate data analyses
+* [dbscan]: Density Based Clustering of Applications with Noise (DBSCAN) and
+        Related Algorithms: optics() and dbscan()
+* [fpc]: dbscan(), pamk() - PAM (Partitioning Around Medoids) algorithm
+* [cluster]: clara() - Partitional , agnes() - Linkage, pam() - PAM algorithm
+* [ClusterR]: centroid-based (k-means, mini-batch-kmeans, k-medoids) and distribution-based (GMM) clustering algorithms
+* [mclust]: mstep(), estep(), hc() - Model-based
+* [kernlab]: specc() - Spectral methods
+* [HDclassif]: hddc() - Based on subspaces
+* [mvtnorm]: Multivariate Normal and t Distributions
+* [tidyverse]: data manipulation and visualization
+* [gridExtra]: helps arrange multiple grid-based plots on a page, and draw tables
+* [RWeka]: x-means clustering
+
+## 2. Key terms
+ * Clustering
+ * Distance
+ * Centroid
+ * Medoid
+ * Norm
+ * Density
+
+## 3. Useful Links
+ $ <https://scholar.google.com/scholar?q=clustering+methods+overview&hl=en>
+ $ <https://en.wikipedia.org/wiki/Cluster_analysis>
+ $ <https://en.wikipedia.org/wiki/Medoid>
+ $ <https://en.wikipedia.org/wiki/K-medoids>
+ $ <https://en.wikibooks.org/wiki/Category:Book:Data_Mining_Algorithms_In_R>
+ 
+ 
+## 4. Introduction
+
+Clustering is a process of grouping together observations that are similar to each other and differ from objects belonging to other groups or clusters.
+Wikipedia gives this definition:
+Cluster analysis or clustering is the task of grouping a set of objects in such a way that objects in the same group (called a cluster) are more similar (in some sense) to each other than to those in other groups (clusters). Popular notions of clusters include groups with small distances between cluster members, dense areas of the data space, intervals or particular statistical distributions (source Wikipedia).
+Clustering can reveal some hidden structures in the data and allow to extract information from unlabelled data. 
+As there are no label attributes exist in the input dataset, clustering is unsupervised machine learning. It is an iterative process of knowledge discovery of trial and failure.
+It is widely used in different domains, the most obvious one is customer segmentation, i.e. finding out customers with similar buying behaviour and to partition the general population of consumers into market segments.
+The similarity between observations can be defined using different metrics.
+For example centroid-based clustering uses a distance between two points in multi-dimensional space as a measure of similarity, i.e the shorter the distance the more similar two points are. The proximity measure has a dissimilarity interpretation so larger proximity values correspond to more dissimilar objects.
+Clustering can be compared to compressing or the vertical dimensionality reduction where we reduce the number of records to several groups or clusters.
+Academic sources (as always I have used <https://scholar.google.com>) use different taxonomy of clustering methods (Rodriguez, M.Z. et al, 2019. Clustering algorithms: A comparative approach.).
+On a very high level clustering approaches can be divided into the following groups:
+ 1. Connectivity-based clustering: hierarchical clustering
+ 2. Centroid-based clustering: k-Means, k-Medoids, x-Means
+ 3. Density-based clustering: DBSCAN, OPTICS 
+ 4. Distribution-based clustering: Gaussian mixture models (Expectation Maximization Clustering)
+ etc....
+There are other ways to distinguish clustering.
+
+Hard or soft clustering.
+
+In non-fuzzy clustering (also known as hard clustering), data is divided into distinct clusters, where each data point can only belong to exactly one cluster. In fuzzy clustering, data points can potentially belong to multiple clusters. For example, an apple can be red or green (hard clustering), but an apple can also be red and green (fuzzy clustering). In this case the degree of apple colour serves as a variable degree of membership in each of the clusters. In general in hard clustering an element either belongs to a cluster or not, whereas in soft clustering clusters may overlap and an element can belong to several clusters.
+Another grouping of clustering methods is whether it is monothetic or polythetic.
+Monothetic is when cluster elements share a common, particular property or attribute, e.g. people with sertain age.
+Polythetic: where cluster members are similar to each other as measured by a distance but without one particular distinguishing attribute or value.
+Another classification of the clustering methhods is flat or hierarchical. 
+Clustering is huge research topic, here I will try to keep it simple and practical. 
+
+
+## 5. Load the libraries
+Let's first load the libraries.
+```{r loading packages, message=FALSE, warning=FALSE}
+library(factoextra)
+library(tidyverse)
+library(mvtnorm)
+library(cluster)
+library(dbscan)
+library(NbClust)
+# Let's set seed
+set.seed(123)
+```
+
+## 6. Generating input dataset
+
+Most of the custering algorithms expect that the data are numerical.
+However, in sales and marketing we often have mixed data types, i.e. numerical and categorical. 
+What to do in this case? 
+The handling of nominal, ordinal, and (a)symmetric binary data is achieved by using the general dissimilarity coefficient of Gower (1971).
+For more info check daisy() function from cluster package.
+I will not use the iris dataset here :). Rather I will artificially generate data using rmvnorm() function from mvtnorm package.
+
+
+```{r}
+
+# Function to generate the multivariate normal distribution with mean equal to cluster_center and covariance matrix sigma.
+generate_cluster <- function(n, cluster_center, sigma, cluster_label){
+        df <- data.frame(rmvnorm(n, mean = cluster_center, sigma = sigma))
+        df$cluster <- cluster_label
+        df
+}
+
+# Cluster 1
+n <- 50
+# Cluster Center
+cluster_center <- c(1, 1, 1)
+# covariance matrix
+sigma <- matrix(c(1, 0, 0, 0, 1, 0, 0, 0, 1), nrow = 3)
+cluster1 <-  generate_cluster(n, cluster_center, sigma, 1)
+
+
+# Cluster 2
+# Cluster Center is different, and covariance matrix is the same
+cluster_center <- c(6, 6, 6)
+cluster2 <-  generate_cluster(n, cluster_center, sigma, 2)
+
+# Cluster 3
+# Cluster Center  and covariance matrix are different
+cluster_center <- c(3, 3, 4)
+sigma <- matrix(c(0.5, 0, 0, 0, 0.5, 0, 0, 0, 0.5), nrow = 3)
+cluster3 <-  generate_cluster(n, cluster_center, sigma, 3)
+
+# Bind rows from all 3 cluster dataframes
+data <- bind_rows(cluster1,cluster2,cluster3)
+
+data$cluster <- factor(data$cluster)
+
+data %>% ggplot(aes(X1,X2,color = cluster)) +
+geom_point()
+
+
+```
+
+## 7. Connectivity-based clustering
+
+Hierarchical algorithms create a hierarchical decomposition of database of points. The hierarchical decomposition is represented by a dendrogram, a  tree that iteratively splits database of points into smaller subsets until each subset consists of only one object. In such a hierarchy, each node of the tree represents a cluster of D. 
+The dendrogram can either be created from the leaves up to the root (agglomerative approach) or from the root down to the leaves (divisive approach) by merging or dividing clusters at each step (Ester et al, 1996). 
+In contrast to partitioning algorithms, hierarchical algorithms do not need k as an input.
+Hierarchical clustering creates a tree (aka dendrogram) or hierarchy of clusters where every cluster node contains child clusters. 
+There is no universal answer of how many clusters exist in the data, it depends on your type of analysis and level of granularity where you want to descend.
+The researcher depending on his desired level of fine granularity can select any level of clusters he or she wants from this cluster tree. 
+There are two strategies to hierarchical clustering:
+ * Agglomerative (bottom up, also known as AGNES: Agglomerative Nesting),
+ * Divisive (top down, also known as DIANA: Divise Analysis).
+Agglomerative executes the following logic: 
+ 1. Start by assigning each item to a cluster (singleton), so that if we have N items, we now have N clusters, each containing just one item. Let the distances (similarities) between the clusters the same as the distances (similarities) between the items they contain.
+ 2. Find the closest (most similar) pair of clusters and merge them into a single cluster, so that now we have one cluster less.
+ 3. Compute distances (similarities) between the new cluster and each of the old clusters.
+ 4. Repeat steps 2 and 3 until all items are clustered into K number of clusters.
+Top-down approach starts with all items in one mega cluster and then splits it recursively by using for example k-Means algorithm.
+Interesting point how the distance between the clusters (not a data point and centroid like in k-Means) is calculated in the hierarchical clustering. Here we need to calculate this distance in order to decide what two clusters merge together.
+There are several ways to calculate cluster distance measure:
+ 1. Single link: D(c1,c2) = min D(x1,x2) where x1 is in c1 and x2 is in c2.
+Here we take the distance between the closest elements in clusters, do it for all clusters and take the minimal of it to define what two clusters to merge together.
+ 2. Complete link: D(c1,c2) = max D(x1,x2) where x1 is in c1 and x2 is in c2.
+Here we take the distance between the farthest elements in clusters, do it for all clusters and take the minimal of it to define what two clusters to merge together.
+ 3. Average link:  D(c1,c2) = 1/L1norm(c1)*1/L1norm(c2) * sum(x1 in C1)sum(x2 in c2)D(x1,x2).
+Take the average of all pairwise distances, do it for all clusters and take the minimal of it to define what two clusters to merge together.
+ 4. Centroids: distance between centroids of two clusters.
+ 5. Ward's method.
+
+### 7.1. Hierarchical clustering in R
+
+Very important pre-processing operations for clustering is scaling and normalization of the dataset. We can do that by using scale() function:
+
+```{r scaling and centering data}
+# I will use only first 3 variables, 4th is our cluster that we will use later for validation
+
+data_scaled <- scale(data[,-4])
+
+```
+
+Now we can calculate distance matrix. by default the system uses euclidean distance, but there are other distances available (just type ?dist): "euclidean", "maximum", "manhattan", "canberra", "binary" or "minkowski".
+euclidean:
+Usual distance between the two vectors (2 norm aka L_2), sqrt(sum((x_i - y_i)^2)).
+
+```{r distance matrix}
+dist_matrix <- dist(x = data_scaled)
+
+```
+
+Let's first do agglomerative clustering.
+Now we can use the distance matrix in the hierarchical cluster analysis. I will use hclust() function from stats package and agnes() from cluster package.
+The way the hierarchical clustering algorithm works follows the following logic:
+1. Calculate the distance between every pair of points and store it in a distance matrix.
+2. Assign every point in its own cluster.
+3. Merge the closest pairs of points based on the distances from the distance matrix. At this step the amount of clusters goes down by 1.
+4. Recomputes the distance between the new cluster and the old ones and stores them in a new distance matrix.
+5. Repeat steps 2 and 3 until all the clusters are merged into one single cluster.
+
+```{r agglomerative hierarchical clustering}
+
+# Compute with hclust() function
+cluster_hclust <- hclust(dist_matrix)
+
+# Compute with agnes() function
+cluster_agnes <- agnes(dist_matrix)
+
+# agnes() produces the agglomerative coefficient, which measures the amount of clustering structure found (closer to 1 => strong clustering structure)
+cluster_agnes$ac
+
+# We can compare the agglomerative coefficients produced by different link methods:
+link_method <- c( "average", "single", "complete", "ward")
+ac_measure <- vector(mode = "numeric",length = length(link_method))
+names(ac_measure) <- link_method
+for (i in link_method) 
+ ac_measure[i] <- agnes(dist_matrix, method = i)$ac
+
+# To produce a dendogram created by hclust() use a generic function plot()
+# Note that the proximity of two observations can be derived from the height where branches containing those two observations are merged. 
+plot(cluster_hclust, cex = 0.5, hang = -1)
+
+# the dendrogram with a border around the 3 clusters
+plot(cluster_hclust, cex = 0.5, hang = -1, main = "Dendrogram with boxes around clusters")
+rect.hclust(cluster_hclust, k = 3, border = 2:5)
+
+# To see a dendogram produced by agnes() use pltree() from cluster package
+pltree(cluster_agnes, cex = 0.5, hang = -1, main = "Dendrogram of agnes")
+```
+
+Now let's run divisive hierarchical clustering.
+
+```{r divisive hierarchical clustering}
+cluster_diana <- diana(dist_matrix)
+
+# Divise coefficient; amount of clustering structure found
+cluster_diana$dc
+
+# plot dendrogram produced by diana() use pltree() from cluster package
+pltree(cluster_diana, cex = 0.6, hang = -1, main = "Dendrogram of diana")
+
+```
+
+To derive cluster labels from the cluster object we need to cut the dendrogram at the desired level using cutree() function.
+```{r}
+# For example if we want to get 3 cluster label vector, set k = 3:
+cluster_vector <- cutree(cluster_hclust, k = 3)
+table(cluster_vector)
+
+# Cut agnes() tree into 3 clusters
+cluster_vector_agnes <- cutree(as.hclust(cluster_agnes), k = 3)
+
+# Cut diana() tree into 3 clusters
+cluster_vector_diana <- cutree(as.hclust(cluster_diana), k = 3)
+
+
+# fviz_cluster() wrapper function from factoextra package can do a number of useful things like scale, PCA and show 2d plot with clusters (where x and y are two PCAs)
+# Note: data = data_scaled (input data frame)
+fviz_cluster(list(data = data_scaled, cluster = cluster_vector))
+
+```
+
+Now let's compare the cluster vector "cluster_vector" from the hierarchical clustering with the original clusters:
+
+```{r validating hierarchical clustering}
+original_clusters <- data$cluster
+sum(original_clusters == cluster_vector)
+
+# Perfect match. So the question is why it is so perfect?
+# I think the artificial dataset used here has a simple structure from which the clusters can be easily identified. Real life examples are not so easy to crack. 
+```
+
+
+## 8. Centroid-based clustering
+
+Another large group of clustering methods is based on centroids. It includes:
+ * k-Means
+ * CLARA (Clustering Large Applications)
+ * x-Means
+ * k-Medoids
+These methodes use partitioning technique (breaking the dataset up into groups) of clustering that clusters the data set of n objects into k clusters with k known a priori.
+Centroid is the center of a cluster. The centroid of a cluster can be one of the points in the cluster (the point which is part of the cluster itself), in this case it is called medoid and the clustering algorithm is called k-Medoids.
+Or otherwise it can be an imaginary point, not part of the cluster itself, and the clustering algorithm is called k-Means. 
+If we use Euclidean or Manhattan distance as a measure then the centroid represents the mean value of all the data points in the cluster, i.e. the center in the n-dimensional space.  
+The objective function of the k-Means algorithm in finding the clusters is to minimize intra-cluster variation (known as total within-cluster variation).
+It makes sense because we want that the points in one cluster be as close as possible to each other (it measures the compactness of the clustering ), and the distance between the clusters as large as possible. 
+The standard algorithm is the Hartigan-Wong algorithm (1979), which defines the total within-cluster variation as the sum of squared distances Euclidean distances between items and the corresponding centroid:
+W(Ck)= sum(xi∈Ck,(xi−μk)^2)
+where:
+xi is a data point belonging to the cluster Ck
+μk is the mean value of the points assigned to the cluster Ck
+Each observation (xi) is assigned to a given cluster such that the sum of squares (SS) distance of the observation to their assigned cluster centers (μk) is minimized.
+The total within-cluster variation is calculated as follows:
+tot.withiness= sum(W(Ck))= sum(k)sum(xi∈Ck,(xi−μk)^2) -> min
+
+### 8.1 k-Means Algorithm
+
+The k-means algorithm follows the following logic (source https://uc-r.github.io/kmeans_clustering):
+
+1.Specify the number of clusters (K) to be created
+2.Select randomly k objects from the data set as the initial cluster centers or means
+3.Assigns each observation to their closest centroid, based on the Euclidean distance between the object and the centroid
+4.For each of the k clusters update the cluster centroid by calculating the new mean values of all the data points in the cluster. The centroid of a Kth cluster is a vector of length p containing the means of all variables for the observations in the kth cluster; p is the number of variables.
+5.Iteratively minimize the total within sum of square. That is, iterate steps 3 and 4 until the cluster assignments stop changing or the maximum number of iterations is reached. By default, the R software uses 10 as the default value for the maximum number of iterations.
+k-Means algorithm requires that the input dataset is scaled. I will use the same dataset as in the hierarchical clustering.
+
+The major issue with k-Means is how to choose the number of clusters k?
+There is no universally accepted answer, however there are some techniques that might help.
+
+1. Let's first of all try to estimate the number of clusters k.
+There are three methods to determine optimal number of clusters:
+ 1. Elbow method
+ 2. Silhouette method
+ 3. Gap statistic
+
+1. Elbow method helps find optimal number of clusters by fitting the k-Means model with a range of values for k. The location of a bend (knee) in the plot is generally considered as an indicator of the appropriate number of clusters:  
+```{r elbow method}
+k <- 1:15
+wss <- vector(mode = "numeric")
+for (i in k) {
+  wss[i] <- kmeans(data_scaled,centers = i,nstart = 25)$tot.withinss
+}
+plot(k, wss,
+     type="b", pch = 19, frame = FALSE, 
+     xlab="Number of clusters K",
+     ylab="Total within-clusters sum of squares")
+
+# Or the same result can be achieved with a wrapper function fviz_nbclust():
+
+fviz_nbclust(data_scaled, kmeans, method = "wss")
+
+
+```
+
+2. Silhouette method 
+The Silhouette Coefficient is calculated using the mean intra-cluster distance (a) and the mean nearest-cluster distance (b) for each sample. The Silhouette Coefficient for a sample is (b - a) / max(a, b), where b is the distance between a sample and the nearest cluster that the sample is not a part of.
+Silhouette coefficient is computed over all samples and used as a metric to judge the number of clusters.
+The number of clusters with maximum silhouette value is the optimal one. This maximum is easier to visualize than the elbow bend.
+```{r}
+fviz_nbclust(data_scaled, kmeans, method = "silhouette")
+```
+
+
+3. Gap statistic method
+```{r}
+gap_stat <- clusGap(data_scaled, FUN = kmeans, nstart = 25,K.max = 10, B = 50)
+fviz_gap_stat(gap_stat)
+```
+
+
+4. NbClust package provides 30 indices for determining the number of clusters and proposes to user the best clustering scheme from the different results obtained by varying all combinations of number of clusters, distance measures, and clustering methods.
+```{r}
+# 
+optimal_clusters <- NbClust(data_scaled, distance = "euclidean", min.nc=2, max.nc=8,method = "kmeans", index = "all")
+```
+
+Well, it seems that the most optimal number of clusters is indeed 3!
+Now once we know k we can run k-Means:
+
+```{r k-Means}
+# nstart parameter tries multiple initial configurations and reports on the best one, in our case 25 initial configurations.
+cluster_kmeans <- kmeans(data_scaled, centers = 3, nstart = 25)
+
+
+# We can view clustering results by using fviz_cluster() which will also automatically performs PCA and plots the data points according to the first two principal components that explain the majority of the variance 
+fviz_cluster(cluster_kmeans, data = data_scaled)
+```
+
+We can also see the evolution of clusters with different values of k (source https://uc-r.github.io/kmeans_clustering):
+
+```{r}
+k4 <- kmeans(data_scaled, centers = 4, nstart = 25)
+k5 <- kmeans(data_scaled, centers = 5, nstart = 25)
+k6 <- kmeans(data_scaled, centers = 6, nstart = 25)
+
+# plots to compare
+p1 <- fviz_cluster(cluster_kmeans, geom = "point", data = data_scaled) + ggtitle("k = 3")
+p2 <- fviz_cluster(k4, geom = "point",  data = data_scaled) + ggtitle("k = 4")
+p3 <- fviz_cluster(k5, geom = "point",  data = data_scaled) + ggtitle("k = 5")
+p4 <- fviz_cluster(k6, geom = "point",  data = data_scaled) + ggtitle("k = 6")
+
+library(gridExtra)
+grid.arrange(p1, p2, p3, p4, nrow = 2)
+```
+
+### 8.2 k-Medoids Algorithm
+
+The K-means algorithm is sensitive to outliers since an object with an extremely large value may substantially distort the distribution of data. 
+k-Medoids algorithm tries to address this issue. k-Medoids is another partitional (breaking the dataset up into groups) algorithm. Like k-Means it requires a priory the number of clusters. 
+Medoids are representative objects of a cluster with a data set whose average dissimilarity to all the objects in the cluster is minimal, it is a most centrally located point in the cluster.
+Medoids are similar in concept to means or centroids, but medoids are always restricted to be members of the data set. 
+The main idea of k-Medoids is the following.
+As T. Velmurugan (2010) argues, instead of taking the mean value of the objects in a cluster as a reference point, a Medoid can be used, which is the most centrally located object in a cluster. Thus the partitioning method can still be performed based on the principle of minimizing the sum of the dissimilarities between each object and its corresponding reference point.
+K-Medoids method uses representative objects as reference points instead of taking the mean value of the objects in each cluster.
+k-medoids clustering methods uses the PAM algorithm (Partitioning Around Medoids) developed by Kaufman and Rousseeuw in 1987 and implemented as pam() function from cluster package.
+PAM is more robust to noise and outliers as compared to k-means because it minimizes a sum of pairwise dissimilarities instead of a sum of squared Euclidean distances.
+```{r}
+cluster_kmedoids <- pam(data_scaled, k = 3)
+print(cluster_kmedoids)
+
+# To visualize the partitioning results, use fviz_cluster()
+fviz_cluster(cluster_kmedoids, data = data_scaled)
+```
+
+
+### 8.3 CLARA (Clustering Large Applications)
+
+CLARA (Clustering Large Applications, Kaufman and Rousseeuw (1990)) is an extension to k-medoids methods to deal with data containing a large number of objects. Instead of finding medoids for the entire data set, CLARA considers a small sample of the data with fixed size (sampsize) and applies the PAM algorithm to generate an optimal set of medoids for the sample. CLARA repeats the sampling and clustering processes a pre-specified number of times in order to minimize the sampling bias. The final clustering results correspond to the set of medoids with the minimal cost.
+The logic of CLARA is as follows:
+1. Split randomly the data sets in multiple subsets with fixed size (sampsize) 
+2. Compute PAM algorithm on each subset and choose the corresponding k representative objects (medoids). Assign each observation of the entire data set to the closest medoid.
+3. Calculate the mean (or the sum) of the dissimilarities of the observations to their closest medoid. This is used as a measure of the goodness of the clustering.
+4. Retain the sub-data set for which the mean (or sum) is minimal. A further analysis is carried out on the final partition.
+
+Note: before runnig CLARA I have generated a data frame with one million points using method explained in section "6. Generating input dataset"
+```{r CLARA}
+cluster_clara <- clara(data_scaled, 3, samples = 50, pamLike = TRUE)
+
+# To Visualizing CLARA clusters
+fviz_cluster(cluster_clara,
+palette = c("#00AFBB", "#FC4E07"), # color palette
+ellipse.type = "t", # Concentration ellipse
+geom = "point", pointsize = 1,
+ggtheme = theme_classic()
+)
+```
+
+
+### 8.4 x-Means Algorithm
+
+x-Means algorithm published by Dan Pelleg and Andrew Moore tries to address k-Means limitations:
+ 1. Poor scalability
+ 2. A priory number of cluster to be supplied by the user
+ 3. Prone to local minima
+x-Means determines the correct number of centroids based on a heuristic. It begins with a minimum set of centroids and then iteratively exploits if using more centroids makes sense.
+x-means is implemented in RWeka package.
+
+```{r}
+# I need to setup Java path for RWeka to work on my PC.
+Sys.setenv('JAVA_HOME' = 'C:/Program Files/Java/jre1.8.0_221/')
+
+# Load RWeka library
+library("RWeka")
+
+# Build Weka package metadata cache
+WPM("refresh-cache") 
+
+# Install XMeans package if not previously installed
+WPM("install-package", "XMeans") 
+
+# Create a Weka control object to specify our parameters
+weka_ctrl <- Weka_control( 
+  I = 100, # max no iterations overall
+  M = 100, # max no iterations in the kmeans loop
+  L = 2,   # min no clusters
+  H = 5,   # max no clusters
+  D = "weka.core.EuclideanDistance", # distance metric
+  C = 0.4, S = 1)
+# Run x-means algorithm
+cluster_xmeans <- XMeans(data_scaled, control = weka_ctrl)
+
+# To see the results
+cluster_xmeans
+```
+
+
+## 9. Density-based clustering
+
+Clustering methodes explained so far although being fast and intelegent enough might not achieve good results in some situations.
+Partitioning methods and hierarchical clustering are good at finding convex well separated clusters. Furthermore, they are affected by noise and outliers in the data. 
+The real data can contain clusters of different shapes and can come with noise and many outliers.
+For example, k-Means does not have a notion of an outlier, and therefore assigns all points to a cluster even if they do not belong in any. That causes a problem in anomaly detection domain. Another example where k-means might not work well is a cluster within a cluster.
+Density-based clustering address these limitations by locating regions of high density (so it works based on density of objects) and separating outliers (so they will not be assigned to any cluster).
+dbscan package used here contains a fast reimplementation of several density-based algorithms of the DBSCAN family for spatial data. 
+It includes the DBSCAN (density-based spatial clustering of applications with noise) and OPTICS (ordering points to identify the clustering structure) clustering algorithms HDBSCAN (hierarchical DBSCAN) and the LOF (local outlier factor) algorithm. 
+In DBSCAN the notion of cluster is defined as a maximal set of density-connected points.
+In brief, the DBSCAN works as follows. To find a cluster, DBSCAN starts with an arbitrary point p and retrieves all points density-reachable from p wrt. (with respect to) Eps and MinPts. If p is a core point, this procedure yields a cluster wrt. Eps and MinPts. If p is a border point, no points are density-reachable from p and DBSCAN visits its the next point of the database.
+I would highly recommend to read the article by Ester and Kriegel the creators of DBSCAN (KDD96-037_DBSCAN.pdf is available in "manuals" section of this repo).
+There are 2 R packages with dbscan algo: dbscan and fpc. I will use dbscan package here.
+
+Before running dbscan we have to determin the optimal eps value.
+To do that I will use kNNdist() from dbscan package. 
+kNNdist() calculats the k-nearest neighbor distances in a matrix of points. The plot can be used to help find a suitable value for the eps neighborhood for DBSCAN. Look for the knee in the plot.
+```{r optimal eps value}
+kNNdistplot(data_scaled, k =  5)
+abline(h = 0.6, lty = 2)
+```
+eps = 0.6 looks just right.
+
+```{r DBSCAN}
+# DBSCAN requires 2 parameters: epsilon (“eps”) and minimum points (“MinPts”). The parameter eps defines the radius of neighborhood (epsilon-neighborhood) around a point x. The parameter MinPts is the minimum number of neighbors within “eps” radius.
+# DBSCAN estimates the density around each data point by counting the number of points in a user-specified eps-neighborhood and applies a used-specified minPts thresholds to identify core, border and noise points.
+
+# Compute DBSCAN using dbscan package
+cluster_dbscan <- dbscan(data_scaled, eps = .6, minPts = 5)
+ 
+# Cluster vector: cluster_dbscan$cluster
+
+# Plot the results
+fviz_cluster(cluster_dbscan, data_scaled, stand = FALSE, frame = FALSE, geom = "point")
+```
+
+
+## 10. Distribution-based clustering
+
+
+
+
+
+
+Some more useful links and references:
+ * https://uc-r.github.io/hc_clustering
+ * Ester, M., Kriegel, H.P., Sander, J. and Xu, X., 1996, August. A density-based algorithm for discovering clusters in large spatial databases with noise. In Kdd (Vol. 96, No. 34, pp. 226-231).
