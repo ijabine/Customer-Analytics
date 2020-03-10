@@ -84,8 +84,10 @@ library(factoextra)
 library(tidyverse)
 library(mvtnorm)
 library(cluster)
+library(mclust)
 library(dbscan)
 library(NbClust)
+
 # Let's set seed
 set.seed(123)
 ```
@@ -502,6 +504,27 @@ fviz_cluster(cluster_dbscan, data_scaled, stand = FALSE, frame = FALSE, geom = "
 
 ## 10. Distribution-based clustering
 
+Model-based clustering uses parameterized finite Gaussian mixture models. Models are estimated by EM algorithm initialized by hierarchical model-based agglomerative clustering. EM algorithm is used by mclust for maximum likelihood estimation.
+The optimal model is then selected according to BIC.To perform Distribution-based clustering one can use mclust package. mclust is a contributed R package for model-based clustering, classification, and density estimation based on finite normal mixture modelling. It provides functions for parameter estimation via the EM algorithm for normal mixture models with a variety of covariance structures, and functions for simulation from these models. 
+
+```{r}
+cluster_model_based <- Mclust(data_scaled)
+summary(cluster_model_based)
+
+# To visualiz model-based clustering use plot.Mclust() from mclust package or fviz_mclust() from factoextra package (based on ggplot2). 
+
+plot.Mclust(cluster_model_based)
+
+
+# fviz_mclust() is versatile enough and uses a principal component analysis (PCA) if the data have more than 2 variables.
+# BIC values used for choosing the number of clusters
+fviz_mclust(cluster_model_based, "BIC", palette = "jco")
+# Classification: plot showing the clustering
+fviz_mclust(cluster_model_based, "classification", geom = "point", 
+            pointsize = 1.5, palette = "jco")
+# Classification uncertainty
+fviz_mclust(cluster_model_based, "uncertainty", palette = "jco")
+```
 
 
 
